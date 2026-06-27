@@ -87,4 +87,4 @@ external_dependencies/vcpkg/
 /Src/Plugins/Library/ml_fanzone - Copy
 /Src/external_dependencies/CEF
 /Src/external_dependencies/CEF.0
-/Src/external_dependencies/CEF3
+/Src/external_dependencies/CEF3.direnv/

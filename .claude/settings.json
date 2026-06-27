@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); [[ \"$f\" == *.cpp || \"$f\" == *.h || \"$f\" == *.c || \"$f\" == *.hpp ]] && command -v clang-format >/dev/null 2>&1 && clang-format -i \"$f\" 2>/dev/null || true'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); if [[ \"$f\" == *flake.lock ]]; then echo \"Blocked: update flake.lock via: nix flake update\" >&2; exit 2; fi'"
+          }
+        ]
+      }
+    ]
+  }
+}
