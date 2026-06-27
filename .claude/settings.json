@@ -7,6 +7,22 @@
           {
             "type": "command",
             "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); [[ \"$f\" == *.cpp || \"$f\" == *.h || \"$f\" == *.c || \"$f\" == *.hpp ]] && command -v clang-format >/dev/null 2>&1 && clang-format -i \"$f\" 2>/dev/null || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); [[ \"$f\" == *.nix ]] && command -v nixpkgs-fmt >/dev/null 2>&1 && nixpkgs-fmt \"$f\" 2>/dev/null || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'data=$(cat); f=$(echo \"$data\" | jq -r \".tool_input.file_path // empty\"); new_str=$(echo \"$data\" | jq -r \".tool_input.new_string // .tool_input.content // empty\"); if [[ \"$f\" == *.cpp || \"$f\" == *.h || \"$f\" == *.c ]] && echo \"$new_str\" | grep -q \"#include <windows.h>\"; then echo \"Warning: new #include <windows.h> added to $f — is this intentional? Consider a Qt6 or POSIX alternative.\"; fi || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); [[ \"$f\" == *flake.nix ]] && nix flake check 2>&1 | tail -5 || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'data=$(cat); f=$(echo \"$data\" | jq -r \".tool_input.file_path // empty\"); new_str=$(echo \"$data\" | jq -r \".tool_input.new_string // .tool_input.content // empty\"); if [[ \"$f\" == *.cpp || \"$f\" == *.c || \"$f\" == *.h ]] && echo \"$new_str\" | grep -qE \"\\b(strcpy|strcat|sprintf|gets|strncpy)\\b\"; then echo \"Warning: unsafe string function in $f — prefer snprintf, strlcpy, or std::string.\"; fi || true'"
           }
         ]
       }
@@ -18,6 +34,10 @@
           {
             "type": "command",
             "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); if [[ \"$f\" == *flake.lock ]]; then echo \"Blocked: update flake.lock via: nix flake update\" >&2; exit 2; fi'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'f=$(cat | jq -r \".tool_input.file_path // empty\"); if [[ \"$f\" == *.vcxproj || \"$f\" == *.sln || \"$f\" == *.vcproj ]]; then echo \"Blocked: .vcxproj/.sln are legacy Windows build files. Add to CMakeLists.txt instead.\" >&2; exit 2; fi'"
           }
         ]
       }
