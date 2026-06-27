@@ -59,7 +59,33 @@ See `TODO.md` for the full phased roadmap.
 
 ## Automation
 
-- **CI**: GitHub Actions — build check on PRs via `nix flake check`
-- **Format**: `nixpkgs-fmt` for Nix files; `clang-format` for C++ (to be wired up)
-- **Changelog**: git-cliff with conventional commits
-- **Deps**: Renovate for nixpkgs pin updates
+- **CI**: GitHub Actions — build check on PRs via `nix flake check` (not yet configured)
+- **Format**: `nixpkgs-fmt` (`.nix`), `clang-format` (C/C++) — both wired via `.claude/settings.json` hooks
+- **Changelog**: git-cliff with conventional commits (planned)
+- **Deps**: Renovate for nixpkgs pin updates (planned)
+
+## Useful commands
+
+```bash
+nix flake check          # validate flake outputs resolve
+nix flake update         # bump nixpkgs pin (updates flake.lock)
+nix develop              # enter dev shell manually
+gh repo set-default MarkusBitterman/hallamp   # fix gh if it targets upstream
+```
+
+## Claude Code tools
+
+Agents (invoke by describing the task — Claude selects automatically):
+- **winapi-auditor** — audits a file/dir for Win32 API usage, outputs severity-ranked Linux replacements
+- **codec-security-reviewer** — security review for codec/parser code (buffer overflows, OOB, etc.)
+
+Skills (user-invocable):
+- `/qt-port <path>` — walks a component through the full Qt5→Qt6 migration checklist
+
+## Gotchas
+
+- **GitHub MCP**: requires `GITHUB_TOKEN` in your shell env; add to `.envrc` or shell profile
+- **clang-format hook**: fires automatically on C/C++ edits but requires a `.clang-format` file in the repo root to take effect — create one with `clang-format --style=LLVM --dump-config > .clang-format`
+- **`Qt/DLL_5.12_x86/`**: pre-compiled Qt 5.12 Windows DLLs as 7z archives — do not edit; irrelevant to the Linux port
+- **Plugin format**: Winamp plugins compile to `.w5s` files (DLLs renamed); naming convention is `in_*` (input), `out_*` (output), `gen_*` (general), `vis_*` (visualizer), `ml_*` (media library)
+- **`.vcxproj`/`.sln` edits are blocked** by the PreToolUse hook — add new targets to CMakeLists.txt instead
