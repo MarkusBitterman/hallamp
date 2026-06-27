@@ -1,44 +1,83 @@
-# Winamp
+# hallamp
 
-## About
+A community fork of Winamp, targeting a Linux-native port with Qt6 and Nix.
 
-Winamp is a multimedia player launched in 1997, iconic for its flexibility and wide compatibility with audio formats. Originally developed by Nullsoft, it gained massive popularity with still millions of users. Its development slowed down, but now, its source code was opened to the community, allowing developers to improve and modernize the playerto meet current user needs.
+> **Status**: Active development on the `hallamp` branch. Currently migrating from Windows-only (Visual Studio 2019, Qt 5.12) to Linux-native (CMake, Qt 6, Nix). See [TODO.md](TODO.md) for the phased roadmap.
 
-## Usage
+## Dev environment
 
-Building of the Winamp desktop client is current based around Visual Studio 2019 (VS2019) and Intel IPP libs (You need to use exactly v6.1.1.035).
-There are differnt options of how to build Winamp:
+Requires [Nix](https://nixos.org/) with flakes enabled:
 
-1. Use a build_winampAll_2019.cmd script file that makes 4 versions x86/x64 (Debug and Release). In this case Visual Studio IDE not running.
-2. Use a winampAll_2019.sln file to build and debug in Visual Studio IDE.
+```
+experimental-features = nix-command flakes
+```
 
-### Dependencies
+```bash
+git clone https://github.com/MarkusBitterman/hallamp
+cd hallamp
+direnv allow        # if you have direnv — activates automatically
+# or:
+nix develop         # enter the Qt6 + audio libs shell manually
+```
 
-#### libvpx
-We take libvpx from https://github.com/ShiftMediaProject/libvpx, modify it and pack to archive.
-Run unpack_libvpx_v1.8.2_msvc16.cmd to unpack.
+The shell provides: Qt 6, CMake, Ninja, Clang, mpg123, libFLAC, libvorbis, libopenmpt, libsndfile, OpenSSL, and supporting tools.
 
-#### libmpg123
-We take libmpg123 from https://www.mpg123.de/download.shtml, modify it and pack to archive.
-Run unpack_libmpg123.cmd to unpack and process dlls.
+## Project layout
 
-#### OpenSSL
-You need to use openssl-1.0.1u. For that you need to build a static version of these libs.
-Run build_vs_2019_openssl_x86.cmd and build_vs_2019_openssl_64.cmd.
+| Path | Purpose |
+|---|---|
+| `Src/Components/` | Qt-based components — primary Qt5→Qt6 migration target |
+| `Src/Winamp/` | Main application |
+| `Src/Plugins/` | Input/output/DSP/visualizer/library plugins (`.w5s` format) |
+| `Src/Wasabi/` | Custom UI framework (heavy Win32 — ported last) |
+| `Src/nu/` | Nullsoft Utility lib — good early Linux port candidate |
+| `Src/pfc/` | Portable file components |
+| `Src/external_dependencies/` | CEF, openmpt, cpr, vorbis, theora |
 
-To build OpenSSL you need to install
+## Contributing
 
-7-Zip, NASM and Perl.
+- Branch: **`hallamp`** — all work goes here
+- Commits: [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `refactor:`, `build:`, `docs:`)
+- See [CLAUDE.md](CLAUDE.md) for full contributor context and branch rules
 
-#### DirectX 9 SDK 
-We take DirectX 9 SDK (June 2010) from Microsoft, modify it and pack to archive.
-Run unpack_microsoft_directx_sdk_2010.cmd to unpack it.
+## Migration roadmap
 
-#### Microsoft ATLMFC lib fix
-In file C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.24.28314\atlmfc\include\atltransactionmanager.h
+See [TODO.md](TODO.md) for the full phased plan:
 
-goto line 427 and change from 'return ::DeleteFile((LPTSTR)lpFileName);' to 'return DeleteFile((LPTSTR)lpFileName);'
+1. **Phase 0** — Foundation (Nix, CMake skeleton, CI) ← *in progress*
+2. **Phase 1** — Build system migration (CMake, port `nu`/`pfc`)
+3. **Phase 2** — Qt5 → Qt6 (`Src/Components/`)
+4. **Phase 3** — Audio subsystem (PipeWire output)
+5. **Phase 4** — GUI / rendering layer
+6. **Phase 5** — Packaging (Nix package, AppImage, Flatpak)
 
-#### Intel IPP 6.1.1.035
-We take Intel IPP 6.1.1.035, modify it and pack to archive.
-Run unpack_intel_ipp_6.1.1.035.cmd to unpack it.
+## License
+
+[Winamp Collaborative License (WCL) v1.0](LICENSE.md)
+
+---
+
+<details>
+<summary>Legacy Windows build instructions (upstream)</summary>
+
+Building the Windows client requires Visual Studio 2019 and Intel IPP 6.1.1.035 (exact version).
+
+Two options:
+1. `build_winampAll_2019.cmd` — builds 4 variants (x86/x64 × Debug/Release) without the IDE
+2. `winampAll_2019.sln` — open in Visual Studio for IDE debugging
+
+### Dependencies (Windows)
+
+**libvpx** — from [ShiftMediaProject/libvpx](https://github.com/ShiftMediaProject/libvpx), run `unpack_libvpx_v1.8.2_msvc16.cmd`
+
+**libmpg123** — from [mpg123.de](https://www.mpg123.de/download.shtml), run `unpack_libmpg123.cmd`
+
+**OpenSSL 1.0.1u** — build static libs with `build_vs_2019_openssl_x86.cmd` and `build_vs_2019_openssl_64.cmd`. Requires 7-Zip, NASM, and Perl.
+
+**DirectX 9 SDK (June 2010)** — run `unpack_microsoft_directx_sdk_2010.cmd`
+
+**Intel IPP 6.1.1.035** — run `unpack_intel_ipp_6.1.1.035.cmd`
+
+**ATLMFC fix** — in `atltransactionmanager.h` line 427, change `::DeleteFile` to `DeleteFile`.
+
+</details>
