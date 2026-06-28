@@ -93,9 +93,18 @@ Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)*
   - Touched only what wac_network pulls in: `nonewthrow.c` (`noexcept`), `threadpool/api_threadpool.h`
     (dropped `<windows.h>`), `strsafe.h` (already Unix-ported upstream)
   - TODO: a standalone `nu` CMake target / full build
-- [~] Port `/Src/pfc/` (Portable File Components)
-  - Builds: `grow_buf.cpp`; `critsec.h` POSIX path; `pfc.h` win32/NOVTABLE guard
-  - Excluded for now: `cfg_var.cpp`, `string*.cpp` — direct `<windows.h>` use, needs porting
+- [x] Port `/Src/pfc/` (Portable File Components) → `libpfc.a`
+  - All four TUs build: `grow_buf.cpp`, `cfg_var.cpp`, `string.cpp`, `string_unicode.cpp`
+  - Win32 INI/registry persistence + GUI text accessors gated behind `#ifdef _WIN32`
+    with Linux no-op stubs (config store is redesigned later); `set_string_a/_w` got
+    real UTF-8↔UTF-16 Linux bodies (`WCHAR` is 16-bit, not 32-bit `wchar_t`)
+  - Foundational fixes flushed out while compiling pfc for the first time:
+    - `linux.h` was missing a `WCHAR` typedef (only Apple/Win32 had one) → added (16-bit)
+    - `ptr_list.h::insert_item` forwarded arguments in the wrong order (swapped
+      `(idx, ptr)` vs base `(ptr, idx)`) — latent bug caught by GCC 15 `-Wtemplate-body`
+    - pfc's header is literally named `string.h`; putting `Src/pfc` on the include
+      path shadowed the C/C++ standard `<string.h>`/`<cstring>`. Fixed by exposing pfc
+      via `Src/` (consumers use `"pfc/..."`) and never `-I Src/pfc`
 - [~] Audit and replace MSVC-specific attributes (`__declspec`, `#pragma intrinsic`, `#pragma comment`)
   - Done across wac_network surface; tree-wide sweep still pending
 - [~] Audit and replace Windows-only headers (`<windows.h>`, `<winsock2.h>`, `<wincrypt.h>`, `WAT.h`)

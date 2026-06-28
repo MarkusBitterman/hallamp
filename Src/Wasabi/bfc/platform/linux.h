@@ -182,6 +182,9 @@ typedef long HRESULT;
 typedef char *LPSTR;
 typedef unsigned long DWORD;
 typedef short int WORD;
+// 16-bit (UTF-16) to match Win32/Wasabi semantics; deliberately NOT wchar_t,
+// which is 32-bit on Linux. Code treating WCHAR as UTF-16 stays correct.
+typedef unsigned short WCHAR;
 #ifndef XMD_H
 typedef unsigned char BYTE;
 #endif
