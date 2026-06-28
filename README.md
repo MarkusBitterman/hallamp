@@ -2,7 +2,24 @@
 
 A community fork of Winamp, targeting a Linux-native port with Qt6 and Nix.
 
-> **Status**: Active development on the `hallamp` branch. Currently migrating from Windows-only (Visual Studio 2019, Qt 5.12) to Linux-native (CMake, Qt 6, Nix). See [TODO.md](TODO.md) for the phased roadmap.
+> **Status**: Active development on the `hallamp` branch. Migrating from Windows-only (Visual Studio 2019, Qt 5.12) to Linux-native (CMake, Qt 6, Nix). The first components now **build and run** on Linux — see below. Full roadmap in [TODO.md](TODO.md).
+
+## What builds today
+
+Under `nix develop` (GCC 15, Qt 6.11, OpenSSL 3.x), CMake produces:
+
+| Target | Kind | Status |
+|---|---|---|
+| `wac_network` | `libwac_network.so` | builds (zero Windows DLLs) and **runtime-proven** via a live DNS + HTTP/HTTPS smoke test |
+| `pfc` | `libpfc.a` | builds (portable file components) |
+| `nu` | `libnu.a` | builds (portable utility subset) |
+
+```bash
+nix develop
+cmake -B build -G Ninja
+cmake --build build           # libwac_network.so, libpfc.a, libnu.a
+ctest --test-dir build        # wac_network_smoke: live HTTP + HTTPS GET (needs network)
+```
 
 ## Dev environment
 
@@ -44,9 +61,9 @@ The shell provides: Qt 6, CMake, Ninja, Clang, mpg123, libFLAC, libvorbis, libop
 
 See [TODO.md](TODO.md) for the full phased plan:
 
-1. **Phase 0** — Foundation (Nix, CMake skeleton, CI) ← *in progress*
-2. **Phase 1** — Build system migration (CMake, port `nu`/`pfc`)
-3. **Phase 2** — Qt5 → Qt6 (`Src/Components/`)
+1. **Phase 0** — Foundation (Nix, CMake skeleton, CI) — *mostly done*
+2. **Phase 1** — Build system migration (CMake, port `nu`/`pfc`) ← *in progress* (`libpfc.a`, `libnu.a` building)
+3. **Phase 2** — Qt5 → Qt6 (`Src/Components/`) ← *in progress* (`wac_network` builds + runs)
 4. **Phase 3** — Audio subsystem (PipeWire output)
 5. **Phase 4** — GUI / rendering layer
 6. **Phase 5** — Packaging (Nix package, AppImage, Flatpak)

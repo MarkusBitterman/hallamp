@@ -24,9 +24,37 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `flake.lock` — pinned nixpkgs revision for reproducible builds
 - `CHANGELOG.md` — this file
 - Updated `README.md` — reframed for the Linux port, legacy Windows build instructions collapsed
+- `.clang-format` (LLVM style) and a GitHub Actions `nix flake check` workflow
+- **CMake build system** — root + per-target `CMakeLists.txt`; the following now build on
+  Linux under `nix develop` (GCC 15, Qt 6.11, OpenSSL 3.x):
+  - `libwac_network.so` — first Linux artifact; 23 TUs, zero Windows DLLs, exports
+    `GetWinamp5SystemComponent`
+  - `libpfc.a` — portable file components (all 4 TUs)
+  - `libnu.a` — Nullsoft utility lib, portable subset (8 TUs: buffers, sort, regexp,
+    `ThreadQueue`, `ServiceWatcher`)
+- `wac_network_smoketest` — live network harness (also CTest `wac_network_smoke`) that
+  resolves DNS, opens TCP, and completes real HTTP **and** HTTPS GETs end to end
+- `Src/replicant/foundation/linux-amd64/types.h` — was missing entirely
+- Linux platform shim (`Src/Wasabi/bfc/platform/linux.h`) gained `WCHAR`, `__fastcall`,
+  a recursive `CRITICAL_SECTION`, and `HRESULT` as `long`
 
 ### Changed
 - Default branch for active development: `hallamp` (forked from `community`)
+- `pfc` is now consumed via the `Src/` include root (include as `"pfc/..."`); its header is
+  named `string.h` and shadowed the standard `<string.h>` when `Src/pfc` was on the path
+- Ported files adopt LLVM `clang-format` formatting wholesale (auto-format hook)
+
+### Fixed
+- TLS handshakes now send **SNI** (`SSL_set_tlsext_host_name`); the 2007-era SSL path
+  omitted it, so modern HTTPS servers aborted the connection with a fatal alert
+- `wac_network` now compiles `RingBuffer.cpp` — it was an undefined symbol the shared
+  library silently tolerated (an executable does not)
+- `pfc::critical_section` uses a recursive mutex on POSIX, matching the re-entrant Win32
+  `CRITICAL_SECTION` (prevents self-deadlock)
+- `pfc/ptr_list.h::insert_item` passed its arguments in the wrong order (caught by GCC 15
+  `-Wtemplate-body`)
+- `wac_network` async-DNS worker no longer joins a stale `pthread_t` after thread exit or
+  failed creation
 
 ---
 

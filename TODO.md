@@ -6,65 +6,71 @@ Qt5 (Windows-only, MSVC) → Qt6 (Linux-native, Nix/CMake)
 
 ## Status snapshot — 2026-06-28
 
-**Milestone 2 ✅ — `wac_network` makes live HTTP + HTTPS requests on Linux.**
-A standalone smoke-test harness (`wac_network_smoketest`, also a CTest target
-`wac_network_smoke`) drives the JNL `WAC_Network_HTTPGet` object directly through
-a real DNS resolve → TCP connect → HTTP/1.0 GET, for both `http://` and
-`https://example.com/`. Both return `200` with body bytes. Exit 0.
+Four green checkpoints on `hallamp` (all committed + pushed). Foundation libs and
+the first real component build on Linux under `nix develop`:
 
-Building/running the harness flushed out **two latent bugs that "it compiles"
-could never catch**:
-- `Src/nu/RingBuffer.cpp` was never compiled. A shared library *tolerates*
-  undefined symbols (resolved at load), so the Milestone 1 `.so` linked while
-  secretly incomplete; an executable forbids them, so the smoke test exposed it.
-  Now compiled into the object set.
-- The 2007-era SSL path never set **SNI**, so modern TLS servers aborted the
-  handshake with a fatal alert. Fixed with `SSL_set_tlsext_host_name()` in
-  `wac_network_ssl_connection.cpp` (verified against `openssl s_client`).
+| commit | artifact | proof |
+|---|---|---|
+| `615b88ea` | `libwac_network.so` | compiles 23/23 TUs, zero Windows DLLs, exports `GetWinamp5SystemComponent` |
+| `28d3ea74` | `wac_network_smoketest` | **runtime-proven**: live DNS + HTTP + HTTPS GET, exit 0 |
+| `4af19b79` | `libpfc.a` | all 4 TUs (cfg_var, string, string_unicode, grow_buf) |
+| `be0392ca` | `libnu.a` | 8 portable TUs (buffers, sort, regexp, ThreadQueue, ServiceWatcher) |
 
-The CMake now builds the 23 TUs once into an `OBJECT` library that feeds both the
-hidden-visibility `.so` and the test executable (static linking ignores ELF
-visibility, so internal JNL classes resolve in the test without being exported).
+### What we've learned (this drives the refactor below)
 
-**Milestone 1 ✅ — `wac_network` is the first Linux build artifact.**
-`libwac_network.so` compiles (23/23 TUs) and links under `nix develop` against Qt6Core,
-Qt6Network, OpenSSL 3.x, and zlib — **zero Windows DLLs**. It exports the real Winamp host
-entry point `GetWinamp5SystemComponent`, with `-fvisibility=hidden` keeping everything else
-internal. This proves the CMake skeleton, the Nix dev shell, and the platform compat layer.
+- **"Builds" ≠ "correct."** A shared lib tolerates undefined symbols (resolved at
+  load), so the M1 `.so` linked while missing `RingBuffer`; only the smoke-test
+  *executable* exposed it. Plus the 2007 SSL path had no **SNI** → modern TLS
+  refused it. Neither was visible at compile time. **Every component needs a
+  runtime proof, not just a build.**
+- **The platform shim `linux.h` is the real leverage point.** Each bite hardens
+  it and pays forward to every later component: `HRESULT long`, `min/max`,
+  drop `None`, **`WCHAR`**, **`__fastcall`**, recursive `CRITICAL_SECTION`.
+  Treat shim gaps as foundational wins, not detours.
+- **GCC 15 `-Wtemplate-body` is a free bug-finder** — it caught `ptr_list`'s
+  swapped insert args without instantiation.
+- **Survey-by-static-marker is a good *first* cut, not a verdict.** For nu, ~1/3
+  of "category A" needed deeper work once compiled (header self-containment,
+  transitive `<windows.h>`, dependency stacks). Budget for it.
+- **`pfc/string.h` shadows the standard `<string.h>`** — never put `Src/pfc` on
+  an include path; expose pfc via `Src/` and include as `"pfc/..."`.
+- **The original per-component scoping was optimistic.** `wac_downloadManager` is
+  NOT "~20 files, one `<windows.h>`": it needs a real Win32→pthreads threading
+  port and is entangled with QtWebEngine (corrected in Phase 2 below).
 
-What it took (the reusable groundwork, not just wac_network-local fixes):
-- Root + per-component `CMakeLists.txt`; `add_compile_definitions(LINUX)` (Wasabi keys off
-  `LINUX`, not `__linux__`).
-- New `Src/replicant/foundation/linux-amd64/types.h` (was missing entirely).
-- Platform shim `Src/Wasabi/bfc/platform/linux.h`: `HRESULT` `void*`→`long`; `min`/`max`
-  macros replaced with `using std::min/max` under C++ (GCC 15 + STL templates); removed
-  `#define None` (collided with Qt's `qcoreevent.h`).
-- `Src/pfc/critsec.h` POSIX `pthread_mutex_t` path; `nonewthrow.c` `noexcept` on delete;
-  win32 includes/pragmas guarded across `wac_network` sources.
-
-**Still unverified (deferred, not blocking) ⚠️** — the platform-shim review only fully
-confirmed the concurrency findings (recursive mutex, DNS thread) before it was cut short.
-The HTTPS smoke test now exercises OpenSSL RNG seeding live (passes), but these remain
-unaudited: integer widths (`DWORD`/`HRESULT` on LP64), SIGPIPE on socket writes (the test
-never hit a broken-pipe path), and the custom global `operator new`/`delete` coexisting with
-Qt. Revisit when a component stresses them, rather than spending a review pass now.
-
-**Next 🎯 — Milestone 3: `wac_downloadManager` builds and links against `wac_network`.**
-First test that the pattern repeats and that components *compose*. Scoped: ~20 files, one
-`<windows.h>` include (`DownloadCallbackT.h`), no backslash paths. Reuses the OBJECT-library
-+ smoke-test shape proven here.
-
-**Decision recorded:** ported files adopt LLVM `clang-format` style wholesale (the
-auto-format hook reformats touched files); blame churn is accepted as part of modernization.
-
-Milestone ladder:
+### Milestone ladder (refactored)
 
 | # | Milestone | Proves | State |
 |---|---|---|---|
 | 1 | `wac_network` builds → `.so` | CMake + Nix + shim *compile* | ✅ |
-| 2 | wac_network *runs* (live fetch) | shim is runtime-correct | ✅ |
-| 3 | `wac_downloadManager` builds + links wac_network | pattern repeats; components compose | 🎯 next |
-| 4 | `wac_playlists`, then `wac_browser` (Qt6 WebEngine) | the hard Qt5→Qt6 surface | later |
+| 2 | `wac_network` *runs* (live fetch) | shim is runtime-correct | ✅ |
+| 3 | Foundation libs: `libpfc.a` + `libnu.a` (portable subsets) | shared utility layer compiles standalone | ✅ |
+| 4 | A second component *composes* (links wac_network + nu + pfc) | the pattern repeats across components | 🎯 next |
+| 5 | `wac_playlists` builds + runtime-proven | playlist/JNL surface | later |
+| 6 | `wac_browser` (Qt6 WebEngine) | the hard Qt5→Qt6 surface | last |
+
+**Milestone 4 — picking the second component.** `wac_downloadManager` is the
+obvious candidate but carries a Win32 threading port + WebEngine entanglement (a
+real bite, scoped in Phase 2). A lighter alternative is to first land the
+**`strsafe.h` port**, which unblocks `nu/trace` and the `StringCch*` calls that
+recur across many components — a high-leverage foundational bite. Decide at the
+top of next session.
+
+**Deferred bites — tracked, each well-scoped:**
+- `wac_downloadManager`: Win32→pthreads port (`CreateThread`/`CreateEvent`/
+  `CRITICAL_SECTION`/`WaitForSingleObject` → `std::thread`/atomic/`std::mutex`);
+  WebEngine UA sync gated until Phase 4; fix backslash includes; guard `WAT.h`.
+- `strsafe.h` port (both `Src/nu` and `Src/replicant/nu` copies still use
+  `__declspec`) → unblocks `nu/trace.cpp` + `strsafe.c`.
+- `nu/RedBlackTree.cpp` → needs the `bfc::PtrList` container stack ported.
+- **Shim dimensions still unverified** (no component has stressed them yet): LP64
+  integer widths (`DWORD`/`HRESULT`), SIGPIPE on socket writes, global
+  `operator new`/`delete` vs Qt. Flush out via a component that exercises them,
+  not a speculative review.
+- Phase 0 leftovers: commit/lock `flake.lock`; add `git-cliff` config.
+
+**Decision recorded:** ported files adopt LLVM `clang-format` style wholesale (the
+auto-format hook reformats touched files); blame churn is accepted as part of modernization.
 
 ---
 
@@ -88,7 +94,8 @@ Legend: `[x]` done · `[~]` partial (only the subset the current milestone neede
 
 Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)**
 
-- [x] Root `CMakeLists.txt` — drives `Src/pfc` + `Src/Components/wac_network`; sets `-DLINUX`
+- [x] Root `CMakeLists.txt` — drives `Src/nu` + `Src/pfc` + `Src/Components/wac_network`;
+  sets `-DLINUX`, `enable_testing()`
 - [~] Port `/Src/nu/` (Nullsoft Utility lib) → `libnu.a` (portable subset)
   - Builds 8 cross-platform TUs: `bitbuffer`, `RingBuffer`, `GaplessRingBuffer`,
     `SpillBuffer`, `sort`, `regexp`, `ThreadQueue`, `ServiceWatcher`
@@ -112,11 +119,14 @@ Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)*
       path shadowed the C/C++ standard `<string.h>`/`<cstring>`. Fixed by exposing pfc
       via `Src/` (consumers use `"pfc/..."`) and never `-I Src/pfc`
 - [~] Audit and replace MSVC-specific attributes (`__declspec`, `#pragma intrinsic`, `#pragma comment`)
-  - Done across wac_network surface; tree-wide sweep still pending
+  - Done across `wac_network`, `pfc`, `nu` (portable subset); `__declspec` still blocks
+    `strsafe.h`; tree-wide sweep pending
 - [~] Audit and replace Windows-only headers (`<windows.h>`, `<winsock2.h>`, `<wincrypt.h>`, `WAT.h`)
-  - Guarded across wac_network; `pfc`/`nu`/Wasabi still have unguarded uses
+  - Gated across `wac_network`, `pfc`, `nu` (built TUs); GUI/Wasabi + deferred files remain
 - [~] Replace `HANDLE`/`HWND` abstractions with platform-agnostic equivalents where feasible
-  - `linux.h` provides POSIX-backed `HANDLE`/`CRITICAL_SECTION`/`HWND` stubs (see review caveats in snapshot)
+  - `linux.h` now provides: `HRESULT` (long), `WCHAR`/`__fastcall`, recursive
+    `CRITICAL_SECTION`, POSIX `HANDLE`/`HWND` stubs. Each component adds what it needs.
+  - Unverified on LP64: integer-width types (`DWORD`/`HRESULT`) — see deferred bites
 
 ---
 
@@ -129,15 +139,25 @@ The Qt components in `/Src/Components/` are already somewhat isolated — start 
   - [x] Runtime-proven (Milestone 2: live DNS + HTTP/HTTPS GET smoke test; SNI + RingBuffer fixes)
   - Note: links OpenSSL/Qt6Network; actual Qt `QNetworkAccessManager` usage is minimal —
     the real work is JNL (the bundled Nullsoft socket lib) + the Wasabi BFC dispatch layer
-- [ ] `wac_downloadManager`
-  - Depends on wac_network (now buildable). Scoped: ~20 files, one `<windows.h>` include
-    (`DownloadCallbackT.h`), no backslash paths. First test of inter-component linking.
+- [ ] `wac_downloadManager` — **rescoped after inspection** (Milestone 4 candidate)
+  - Links against `wac_network` + `nu` + `pfc` (all now buildable).
+  - Real cost (the original "~20 files, one `<windows.h>`" note was wrong):
+    - Win32→pthreads threading port: `CreateThread`/`CreateEvent`/`SetEvent`/
+      `WaitForSingleObject`/`CloseHandle` + `CRITICAL_SECTION downloadsCS` drive a
+      background download worker. Map to `std::atomic<bool>` killswitch +
+      `std::mutex`/`pfc::critical_section` + pthread/`std::thread` join.
+    - QtWebEngine entanglement: 2 lines (`wac_downloadManager.cpp:221,223`) sync the
+      browser user-agent → gate behind a feature macro until Phase 4 (don't pull in
+      Chromium for a UA string).
+    - Backslash includes (`..\wac_network\…`, `..\WAT\WAT.h`) + Windows-only `WAT.h`;
+      `%S` wide-format in `StringCchPrintfA`. Note `DownloadEx` is currently a stub.
 - [ ] `wac_playlists`
-  - Depends on wac_network
+  - Depends on wac_network. Survey real scope before committing (downloadManager
+    taught us the per-component notes are optimistic).
 - [ ] `wac_browser`
   - `QWebEngineView` had significant API changes Qt5→Qt6
   - `QWebEnginePage` script injection model changed
-  - Tackle last; highest complexity
+  - Tackle last; highest complexity. Re-enables the downloadManager UA sync above.
 
 Qt5→Qt6 migration reference: https://doc.qt.io/qt-6/sourcebreaks.html
 
