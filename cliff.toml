@@ -1,0 +1,66 @@
+# git-cliff configuration for hallamp
+#
+# CHANGELOG.md is HAND-CURATED in Keep a Changelog style. git-cliff is the
+# *generator* we reach for at a tagged release — its output is tuned here to land
+# under the same Added / Changed / Fixed headings the curated file already uses, so
+# it augments rather than fights the prose. Conventional-commit types map to those
+# headings via [git].commit_parsers below.
+#
+#   git cliff --unreleased         # preview entries since the last tag (stdout)
+#   git cliff --tag vX.Y.Z         # render a release section
+#
+# There are no tags yet, so everything currently renders under [unreleased].
+
+[changelog]
+# Rendered once, above the generated body.
+header = """
+# Changelog
+
+All notable changes to hallamp will be documented here.
+
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning: [Semantic Versioning](https://semver.org/).
+
+"""
+# Tera template — one section per release, grouped by the `group` set in
+# commit_parsers (Added / Changed / Fixed).
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [Unreleased]
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | split(pat=": ") | last | trim | upper_first }}\
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+# Drop commits that aren't conventional (merge noise, WIP, etc.).
+filter_unconventional = true
+# Only emit commits that match a parser below; everything else is dropped.
+filter_commits = true
+# Newest commits first within a section.
+sort_commits = "newest"
+# Recognise semver tags for release sections.
+tag_pattern = "v[0-9]*"
+
+# Conventional-commit type -> our Keep-a-Changelog heading.
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^build", group = "Changed" },
+  { message = "^chore", group = "Changed" },
+  { message = "^perf", group = "Changed" },
+  # Docs / style / test churn is noisy in a release changelog — skip it.
+  { message = "^docs", skip = true },
+  { message = "^style", skip = true },
+  { message = "^test", skip = true },
+]

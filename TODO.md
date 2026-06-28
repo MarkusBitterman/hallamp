@@ -67,7 +67,6 @@ top of next session.
   integer widths (`DWORD`/`HRESULT`), SIGPIPE on socket writes, global
   `operator new`/`delete` vs Qt. Flush out via a component that exercises them,
   not a speculative review.
-- Phase 0 leftovers: commit/lock `flake.lock`; add `git-cliff` config.
 
 **Decision recorded:** ported files adopt LLVM `clang-format` style wholesale (the
 auto-format hook reformats touched files); blame churn is accepted as part of modernization.
@@ -83,10 +82,11 @@ Legend: `[x]` done · `[~]` partial (only the subset the current milestone neede
 - [x] `flake.nix` + `.envrc` (direnv)
 - [x] `CLAUDE.md`
 - [x] Set default GH repo to `MarkusBitterman/hallamp`
-- [ ] Commit and lock `flake.lock`
+- [x] Commit and lock `flake.lock` (committed in `HEAD`)
 - [x] GitHub Actions: `nix flake check` on PRs — `.github/workflows/nix-flake-check.yml`
 - [x] Add `.clang-format` config — LLVM style; activates the auto-format hook
-- [ ] Add `git-cliff` config for changelog generation
+- [x] Add `git-cliff` config for changelog generation — `cliff.toml`; conventional
+  types map to the curated Added/Changed/Fixed headings; tool in the Nix devshell
 
 ---
 

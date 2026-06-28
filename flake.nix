@@ -51,6 +51,7 @@
             python3
             git
             gh
+            git-cliff # changelog generation from conventional commits
             nixpkgs-fmt
 
             # LSPs — clangd ships with clang-tools above
