@@ -34,6 +34,15 @@ Versioning: [Semantic Versioning](https://semver.org/).
     `ThreadQueue`, `ServiceWatcher`)
 - `wac_network_smoketest` — live network harness (also CTest `wac_network_smoke`) that
   resolves DNS, opens TCP, and completes real HTTP **and** HTTPS GETs end to end
+- `nu` now also builds `strsafe.c` and `trace.cpp`; the wide `StringCch*W`/`StringCb*W`
+  `printf` family is ported to Linux (delegates to native-`wchar_t` `vswprintf`)
+- `nu_strsafe_test` — CTest `nu_strsafe` asserting the strsafe bounded-string contracts
+  (truncation reported + destination null-terminated + correct `HRESULT`) for the ANSI
+  and wide paths, and driving `nu/trace.cpp` `DebugPrintfA/W` end to end
+- `OutputDebugStringA`/`OutputDebugStringW` in the Wasabi Linux shim
+  (`bfc/platform/linux.h`, `linux/linux.cpp`)
+- `cliff.toml` — git-cliff config; conventional-commit types map to the curated
+  Added/Changed/Fixed headings. `git-cliff` added to the Nix devshell
 - `Src/replicant/foundation/linux-amd64/types.h` — was missing entirely
 - Linux platform shim (`Src/Wasabi/bfc/platform/linux.h`) gained `WCHAR`, `__fastcall`,
   a recursive `CRITICAL_SECTION`, and `HRESULT` as `long`
@@ -45,6 +54,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - Ported files adopt LLVM `clang-format` formatting wholesale (auto-format hook)
 
 ### Fixed
+- `strsafe.h`'s wide `printf` workers were `#ifdef _WIN32` only (a literal
+  `// TODO: benski> port to BSD` calling MSVC's `_vsnwprintf`), so any non-Windows
+  caller of `StringCchPrintfW` & friends failed to link; they now compile via
+  `vswprintf`. Also made `strsafe.h` self-contained on Linux (`__declspec` was only
+  neutralized by the Wasabi shim, breaking the standalone `strsafe.c`)
 - TLS handshakes now send **SNI** (`SSL_set_tlsext_host_name`); the 2007-era SSL path
   omitted it, so modern HTTPS servers aborted the connection with a fatal alert
 - `wac_network` now compiles `RingBuffer.cpp` — it was an undefined symbol the shared

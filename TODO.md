@@ -6,7 +6,7 @@ Qt5 (Windows-only, MSVC) → Qt6 (Linux-native, Nix/CMake)
 
 ## Status snapshot — 2026-06-28
 
-Four green checkpoints on `hallamp` (all committed + pushed). Foundation libs and
+Five green checkpoints on `hallamp` (all committed + pushed). Foundation libs and
 the first real component build on Linux under `nix develop`:
 
 | commit | artifact | proof |
@@ -15,6 +15,7 @@ the first real component build on Linux under `nix develop`:
 | `28d3ea74` | `wac_network_smoketest` | **runtime-proven**: live DNS + HTTP + HTTPS GET, exit 0 |
 | `4af19b79` | `libpfc.a` | all 4 TUs (cfg_var, string, string_unicode, grow_buf) |
 | `be0392ca` | `libnu.a` | 8 portable TUs (buffers, sort, regexp, ThreadQueue, ServiceWatcher) |
+| `nu_strsafe` | `libnu.a` (+`strsafe.c` +`trace.cpp`) + `nu_strsafe_test` | **runtime-proven**: `nu_strsafe` asserts copy/printf/vprintfEx truncation + null-term + HRESULT contracts and drives trace.cpp end to end, exit 0 |
 
 ### What we've learned (this drives the refactor below)
 
@@ -34,6 +35,14 @@ the first real component build on Linux under `nix develop`:
   transitive `<windows.h>`, dependency stacks). Budget for it.
 - **`pfc/string.h` shadows the standard `<string.h>`** — never put `Src/pfc` on
   an include path; expose pfc via `Src/` and include as `"pfc/..."`.
+- **Transitive `<windows.h>` hides missing includes.** `trace.cpp` got `realloc`/
+  `free` via `<windows.h>` on Win32; on Linux it needed an explicit `<stdlib.h>`.
+  And a header that relied on the Wasabi shim for `__declspec`/`__stdcall` broke
+  when compiled standalone (`strsafe.c`) — make ported headers self-contained.
+- **A wide path is not one decision.** `strsafe`'s `StringCch*W` works on the
+  *platform-native* `wchar_t` (32-bit) via `vswprintf` — fine for `trace.cpp` and
+  native callers, but the codebase's 16-bit `WCHAR` callers are a separate problem
+  (no libc 16-bit wide printf). Port the easy width first, defer the hard one.
 - **The original per-component scoping was optimistic.** `wac_downloadManager` is
   NOT "~20 files, one `<windows.h>`": it needs a real Win32→pthreads threading
   port and is entangled with QtWebEngine (corrected in Phase 2 below).
@@ -49,19 +58,22 @@ the first real component build on Linux under `nix develop`:
 | 5 | `wac_playlists` builds + runtime-proven | playlist/JNL surface | later |
 | 6 | `wac_browser` (Qt6 WebEngine) | the hard Qt5→Qt6 surface | last |
 
-**Milestone 4 — picking the second component.** `wac_downloadManager` is the
-obvious candidate but carries a Win32 threading port + WebEngine entanglement (a
-real bite, scoped in Phase 2). A lighter alternative is to first land the
-**`strsafe.h` port**, which unblocks `nu/trace` and the `StringCch*` calls that
-recur across many components — a high-leverage foundational bite. Decide at the
-top of next session.
+**Milestone 4 — picking the second component.** The lighter prerequisite (the
+**`strsafe.h` port**) is now done, so Milestone 4 is `wac_downloadManager` — the
+first component that *composes* (links `wac_network` + `nu` + `pfc`). It carries a
+Win32→pthreads threading port + WebEngine entanglement (a real bite, scoped in
+Phase 2).
 
 **Deferred bites — tracked, each well-scoped:**
 - `wac_downloadManager`: Win32→pthreads port (`CreateThread`/`CreateEvent`/
   `CRITICAL_SECTION`/`WaitForSingleObject` → `std::thread`/atomic/`std::mutex`);
   WebEngine UA sync gated until Phase 4; fix backslash includes; guard `WAT.h`.
-- `strsafe.h` port (both `Src/nu` and `Src/replicant/nu` copies still use
-  `__declspec`) → unblocks `nu/trace.cpp` + `strsafe.c`.
+- **16-bit `WCHAR` wide-strsafe reconciliation.** The ported `StringCch*W` path
+  uses native 32-bit `wchar_t` (`vswprintf`); the ~775 tree-wide `StringCchPrintfW`
+  callers that pass 16-bit `WCHAR*` need a custom 16-bit formatter or a narrow
+  (UTF-8) bridge. Surfaces when a `WCHAR*`-heavy component enters the build.
+  (`Src/replicant/nu/strsafe.h` — a separate copy — is untouched and still
+  Win-only-ish; reconcile if a consumer of it is ported.)
 - `nu/RedBlackTree.cpp` → needs the `bfc::PtrList` container stack ported.
 - **Shim dimensions still unverified** (no component has stressed them yet): LP64
   integer widths (`DWORD`/`HRESULT`), SIGPIPE on socket writes, global
@@ -97,13 +109,19 @@ Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)*
 - [x] Root `CMakeLists.txt` — drives `Src/nu` + `Src/pfc` + `Src/Components/wac_network`;
   sets `-DLINUX`, `enable_testing()`
 - [~] Port `/Src/nu/` (Nullsoft Utility lib) → `libnu.a` (portable subset)
-  - Builds 8 cross-platform TUs: `bitbuffer`, `RingBuffer`, `GaplessRingBuffer`,
-    `SpillBuffer`, `sort`, `regexp`, `ThreadQueue`, `ServiceWatcher`
+  - Builds 10 cross-platform TUs: `bitbuffer`, `RingBuffer`, `GaplessRingBuffer`,
+    `SpillBuffer`, `sort`, `regexp`, `ThreadQueue`, `ServiceWatcher`, plus
+    `strsafe.c` + `trace.cpp` (added with the strsafe.h port)
   - Foundational fix: `linux.h` was missing `#define __fastcall` (had `__cdecl`);
     `SpillBuffer.h` made self-contained for `size_t`
+  - **strsafe.h port**: un-gated the wide `printf` path (was `#ifdef _WIN32 //
+    TODO: benski> port to BSD`) by aliasing `_vsnwprintf`→`vswprintf` (native
+    32-bit `wchar_t`); made `strsafe.h` self-contained (`__declspec`/`__stdcall`
+    neutralized in-header); `trace.h` no longer needs Windows `<wtypes.h>`; added
+    canonical `OutputDebugStringA/W` to the Wasabi shim. Proven by `nu_strsafe`.
+    Still deferred: 16-bit `WCHAR` reconciliation (see deferred bites above).
   - Deferred (each its own bite, documented in `Src/nu/CMakeLists.txt`):
-    `RedBlackTree` (needs `bfc::PtrList` stack); `trace`+`strsafe.c` (need a
-    `strsafe.h` port — still `__declspec`); `DialogSkinner` + all GUI files
+    `RedBlackTree` (needs `bfc::PtrList` stack); `DialogSkinner` + all GUI files
     (header pulls `<windows.h>`) → Phase 4; MSVC CRT stubs (`no*.c`) and the
     global-allocator override `nonewthrow.c` deliberately excluded
 - [x] Port `/Src/pfc/` (Portable File Components) → `libpfc.a`
@@ -119,8 +137,8 @@ Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)*
       path shadowed the C/C++ standard `<string.h>`/`<cstring>`. Fixed by exposing pfc
       via `Src/` (consumers use `"pfc/..."`) and never `-I Src/pfc`
 - [~] Audit and replace MSVC-specific attributes (`__declspec`, `#pragma intrinsic`, `#pragma comment`)
-  - Done across `wac_network`, `pfc`, `nu` (portable subset); `__declspec` still blocks
-    `strsafe.h`; tree-wide sweep pending
+  - Done across `wac_network`, `pfc`, `nu` (incl. `strsafe.h`: `__declspec`/`__stdcall`
+    now neutralized in-header); tree-wide sweep pending
 - [~] Audit and replace Windows-only headers (`<windows.h>`, `<winsock2.h>`, `<wincrypt.h>`, `WAT.h`)
   - Gated across `wac_network`, `pfc`, `nu` (built TUs); GUI/Wasabi + deferred files remain
 - [~] Replace `HANDLE`/`HWND` abstractions with platform-agnostic equivalents where feasible

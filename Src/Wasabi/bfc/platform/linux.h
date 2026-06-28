@@ -434,6 +434,8 @@ HWND WindowFromPoint(POINT p);
 #endif
 
 void OutputDebugString(const char *s);
+void OutputDebugStringA(const char *s);
+void OutputDebugStringW(const wchar_t *s); // native wchar_t (see nu/trace.cpp)
 int MulDiv(int m1, int m2, int d);
 DWORD GetTickCount();
 void Sleep(int ms);
