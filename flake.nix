@@ -10,7 +10,8 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-      in {
+      in
+      {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Qt6 — migration target from bundled Qt 5.12
@@ -51,11 +52,19 @@
             git
             gh
             nixpkgs-fmt
+
+            # LSPs — clangd ships with clang-tools above
+            cmake-language-server # CMakeLists.txt
+            nixd # Nix files
           ];
 
           shellHook = ''
             echo "hallamp dev — Qt $(qmake6 --version 2>/dev/null | grep -oP '(?<=Qt version )\S+' || echo '6.x') / Nix"
             export QT_SELECT=qt6
+            # Symlink compile_commands.json for clangd if a build directory exists
+            if [ -f build/compile_commands.json ] && [ ! -L compile_commands.json ]; then
+              ln -sf build/compile_commands.json compile_commands.json
+            fi
           '';
         };
       });

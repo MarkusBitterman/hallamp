@@ -4,7 +4,53 @@ Qt5 (Windows-only, MSVC) → Qt6 (Linux-native, Nix/CMake)
 
 ---
 
+## Status snapshot — 2026-06-27
+
+**Milestone 1 ✅ — `wac_network` is the first Linux build artifact.**
+`libwac_network.so` compiles (23/23 TUs) and links under `nix develop` against Qt6Core,
+Qt6Network, OpenSSL 3.x, and zlib — **zero Windows DLLs**. It exports the real Winamp host
+entry point `GetWinamp5SystemComponent`, with `-fvisibility=hidden` keeping everything else
+internal. This proves the CMake skeleton, the Nix dev shell, and the platform compat layer.
+
+What it took (the reusable groundwork, not just wac_network-local fixes):
+- Root + per-component `CMakeLists.txt`; `add_compile_definitions(LINUX)` (Wasabi keys off
+  `LINUX`, not `__linux__`).
+- New `Src/replicant/foundation/linux-amd64/types.h` (was missing entirely).
+- Platform shim `Src/Wasabi/bfc/platform/linux.h`: `HRESULT` `void*`→`long`; `min`/`max`
+  macros replaced with `using std::min/max` under C++ (GCC 15 + STL templates); removed
+  `#define None` (collided with Qt's `qcoreevent.h`).
+- `Src/pfc/critsec.h` POSIX `pthread_mutex_t` path; `nonewthrow.c` `noexcept` on delete;
+  win32 includes/pragmas guarded across `wac_network` sources.
+
+**In flight 🔄** — adversarial multi-agent review of the shared platform shim for *latent*
+(compiles-but-wrong) bugs: recursive-mutex deadlock (`CRITICAL_SECTION` is re-entrant, a
+default `pthread_mutex` is not), integer widths (`DWORD`/`HRESULT` on LP64), OpenSSL RNG
+seeding after dropping `CryptGenRandom`, SIGPIPE on socket writes, and the custom global
+`operator new`/`delete` coexisting with Qt. Confirmed findings fold into the Milestone 1
+checkpoint before commit.
+
+**Next 🎯 — Milestone 2: "first bytes over the wire."** Prove `wac_network` *runs*, not just
+builds — a CMake test target that drives the JNL classes directly to resolve DNS, open a TCP
+socket, and complete a live HTTP + HTTPS GET. This exercises every runtime unknown above and
+turns the review's findings into a concrete pass/fail gate.
+
+**Decision recorded:** ported files adopt LLVM `clang-format` style wholesale (the
+auto-format hook reformats touched files); blame churn is accepted as part of modernization.
+
+Milestone ladder:
+
+| # | Milestone | Proves | State |
+|---|---|---|---|
+| 1 | `wac_network` builds → `.so` | CMake + Nix + shim *compile* | ✅ |
+| 2 | wac_network *runs* (live fetch) | shim is runtime-correct | 🎯 next |
+| 3 | `wac_downloadManager` builds + links wac_network | pattern repeats; components compose | scoped |
+| 4 | `wac_playlists`, then `wac_browser` (Qt6 WebEngine) | the hard Qt5→Qt6 surface | later |
+
+---
+
 ## Phase 0: Foundation
+
+Legend: `[x]` done · `[~]` partial (only the subset the current milestone needed) · `[ ]` not started
 
 - [x] Fork from community branch (alexfreud/winamp)
 - [x] Create `hallamp` branch
@@ -12,25 +58,30 @@ Qt5 (Windows-only, MSVC) → Qt6 (Linux-native, Nix/CMake)
 - [x] `CLAUDE.md`
 - [x] Set default GH repo to `MarkusBitterman/hallamp`
 - [ ] Commit and lock `flake.lock`
-- [ ] GitHub Actions: `nix flake check` on PRs
-- [ ] Add `.clang-format` config
+- [x] GitHub Actions: `nix flake check` on PRs — `.github/workflows/nix-flake-check.yml`
+- [x] Add `.clang-format` config — LLVM style; activates the auto-format hook
 - [ ] Add `git-cliff` config for changelog generation
 
 ---
 
 ## Phase 1: Build system migration (Windows → CMake)
 
-Goal: get _something_ building on Linux under Nix.
+Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)**
 
-- [ ] Root `CMakeLists.txt` — skeleton, no sources yet
-- [ ] Port `/Src/nu/` (Nullsoft Utility lib)
-  - Minimal Win32 surface, mostly templates and data structures
-  - Good smoke test for the CMake setup
-- [ ] Port `/Src/pfc/` (Portable File Components)
-  - Mostly cross-platform already
-- [ ] Audit and replace MSVC-specific attributes (`__declspec`, `#pragma comment(lib, ...)`)
-- [ ] Audit and replace Windows-only headers (`<windows.h>`, `<winsock2.h>`, etc.)
-- [ ] Replace `HANDLE`/`HWND` abstractions with platform-agnostic equivalents where feasible
+- [x] Root `CMakeLists.txt` — drives `Src/pfc` + `Src/Components/wac_network`; sets `-DLINUX`
+- [~] Port `/Src/nu/` (Nullsoft Utility lib)
+  - Touched only what wac_network pulls in: `nonewthrow.c` (`noexcept`), `threadpool/api_threadpool.h`
+    (dropped `<windows.h>`), `strsafe.h` (already Unix-ported upstream)
+  - TODO: a standalone `nu` CMake target / full build
+- [~] Port `/Src/pfc/` (Portable File Components)
+  - Builds: `grow_buf.cpp`; `critsec.h` POSIX path; `pfc.h` win32/NOVTABLE guard
+  - Excluded for now: `cfg_var.cpp`, `string*.cpp` — direct `<windows.h>` use, needs porting
+- [~] Audit and replace MSVC-specific attributes (`__declspec`, `#pragma intrinsic`, `#pragma comment`)
+  - Done across wac_network surface; tree-wide sweep still pending
+- [~] Audit and replace Windows-only headers (`<windows.h>`, `<winsock2.h>`, `<wincrypt.h>`, `WAT.h`)
+  - Guarded across wac_network; `pfc`/`nu`/Wasabi still have unguarded uses
+- [~] Replace `HANDLE`/`HWND` abstractions with platform-agnostic equivalents where feasible
+  - `linux.h` provides POSIX-backed `HANDLE`/`CRITICAL_SECTION`/`HWND` stubs (see review caveats in snapshot)
 
 ---
 
@@ -38,11 +89,14 @@ Goal: get _something_ building on Linux under Nix.
 
 The Qt components in `/Src/Components/` are already somewhat isolated — start here.
 
-- [ ] `wac_network`
-  - `QNetworkAccessManager` API largely unchanged Qt5→Qt6
-  - Lowest friction entry point
+- [~] `wac_network`
+  - [x] Compiles + links → `libwac_network.so` (Milestone 1)
+  - [ ] Runtime-proven (Milestone 2: live DNS + HTTP/HTTPS GET test harness)
+  - Note: links OpenSSL/Qt6Network; actual Qt `QNetworkAccessManager` usage is minimal —
+    the real work is JNL (the bundled Nullsoft socket lib) + the Wasabi BFC dispatch layer
 - [ ] `wac_downloadManager`
-  - Depends on wac_network
+  - Depends on wac_network (now buildable). Scoped: ~20 files, one `<windows.h>` include
+    (`DownloadCallbackT.h`), no backslash paths. First test of inter-component linking.
 - [ ] `wac_playlists`
   - Depends on wac_network
 - [ ] `wac_browser`

@@ -62,6 +62,13 @@ external_dependencies/libFLAC/src/libFLAC/ia32/lpc_asm.obj
 /Elevator/IFileTypeRegistrar_32.h
 
 external_dependencies/vcpkg/
+
+# CMake / Linux build
+build/
+compile_commands.json
+
+# direnv local cache
+.direnv/
 /vcpkg_installed
 /external_dependencies/x86-windows-static
 *.stamp

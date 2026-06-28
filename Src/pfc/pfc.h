@@ -1,13 +1,15 @@
 #ifndef STRICT
 #define STRICT
 #endif
-#include <windows.h>
 
-#ifndef NOVTABLE
+#ifdef _WIN32
+#include <windows.h>
 #define NOVTABLE _declspec(novtable)
+#else
+#define NOVTABLE
 #endif
 
-#define tabsize(x) (sizeof(x)/sizeof(*x))
+#define tabsize(x) (sizeof(x) / sizeof(*x))
 
 #include "string.h"
 #ifdef PFC_UNICODE
