@@ -67,6 +67,9 @@ external_dependencies/vcpkg/
 build/
 compile_commands.json
 
+# LSP / clangd cache
+.cache/
+
 # direnv local cache
 .direnv/
 /vcpkg_installed
