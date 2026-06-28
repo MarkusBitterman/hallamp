@@ -89,10 +89,16 @@ Legend: `[x]` done · `[~]` partial (only the subset the current milestone neede
 Goal: get _something_ building on Linux under Nix. ✅ **achieved (Milestone 1)**
 
 - [x] Root `CMakeLists.txt` — drives `Src/pfc` + `Src/Components/wac_network`; sets `-DLINUX`
-- [~] Port `/Src/nu/` (Nullsoft Utility lib)
-  - Touched only what wac_network pulls in: `nonewthrow.c` (`noexcept`), `threadpool/api_threadpool.h`
-    (dropped `<windows.h>`), `strsafe.h` (already Unix-ported upstream)
-  - TODO: a standalone `nu` CMake target / full build
+- [~] Port `/Src/nu/` (Nullsoft Utility lib) → `libnu.a` (portable subset)
+  - Builds 8 cross-platform TUs: `bitbuffer`, `RingBuffer`, `GaplessRingBuffer`,
+    `SpillBuffer`, `sort`, `regexp`, `ThreadQueue`, `ServiceWatcher`
+  - Foundational fix: `linux.h` was missing `#define __fastcall` (had `__cdecl`);
+    `SpillBuffer.h` made self-contained for `size_t`
+  - Deferred (each its own bite, documented in `Src/nu/CMakeLists.txt`):
+    `RedBlackTree` (needs `bfc::PtrList` stack); `trace`+`strsafe.c` (need a
+    `strsafe.h` port — still `__declspec`); `DialogSkinner` + all GUI files
+    (header pulls `<windows.h>`) → Phase 4; MSVC CRT stubs (`no*.c`) and the
+    global-allocator override `nonewthrow.c` deliberately excluded
 - [x] Port `/Src/pfc/` (Portable File Components) → `libpfc.a`
   - All four TUs build: `grow_buf.cpp`, `cfg_var.cpp`, `string.cpp`, `string_unicode.cpp`
   - Win32 INI/registry persistence + GUI text accessors gated behind `#ifdef _WIN32`

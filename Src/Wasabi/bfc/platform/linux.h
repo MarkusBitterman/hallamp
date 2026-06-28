@@ -172,6 +172,7 @@ typedef unsigned long long ULARGE_INTEGER;
 #define COMEXP
 #define EXTC extern "C"
 #define __cdecl
+#define __fastcall
 #define CALLBACK
 #define WINAPI
 typedef long HRESULT;
