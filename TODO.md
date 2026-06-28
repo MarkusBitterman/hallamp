@@ -4,7 +4,27 @@ Qt5 (Windows-only, MSVC) → Qt6 (Linux-native, Nix/CMake)
 
 ---
 
-## Status snapshot — 2026-06-27
+## Status snapshot — 2026-06-28
+
+**Milestone 2 ✅ — `wac_network` makes live HTTP + HTTPS requests on Linux.**
+A standalone smoke-test harness (`wac_network_smoketest`, also a CTest target
+`wac_network_smoke`) drives the JNL `WAC_Network_HTTPGet` object directly through
+a real DNS resolve → TCP connect → HTTP/1.0 GET, for both `http://` and
+`https://example.com/`. Both return `200` with body bytes. Exit 0.
+
+Building/running the harness flushed out **two latent bugs that "it compiles"
+could never catch**:
+- `Src/nu/RingBuffer.cpp` was never compiled. A shared library *tolerates*
+  undefined symbols (resolved at load), so the Milestone 1 `.so` linked while
+  secretly incomplete; an executable forbids them, so the smoke test exposed it.
+  Now compiled into the object set.
+- The 2007-era SSL path never set **SNI**, so modern TLS servers aborted the
+  handshake with a fatal alert. Fixed with `SSL_set_tlsext_host_name()` in
+  `wac_network_ssl_connection.cpp` (verified against `openssl s_client`).
+
+The CMake now builds the 23 TUs once into an `OBJECT` library that feeds both the
+hidden-visibility `.so` and the test executable (static linking ignores ELF
+visibility, so internal JNL classes resolve in the test without being exported).
 
 **Milestone 1 ✅ — `wac_network` is the first Linux build artifact.**
 `libwac_network.so` compiles (23/23 TUs) and links under `nix develop` against Qt6Core,
@@ -22,17 +42,17 @@ What it took (the reusable groundwork, not just wac_network-local fixes):
 - `Src/pfc/critsec.h` POSIX `pthread_mutex_t` path; `nonewthrow.c` `noexcept` on delete;
   win32 includes/pragmas guarded across `wac_network` sources.
 
-**In flight 🔄** — adversarial multi-agent review of the shared platform shim for *latent*
-(compiles-but-wrong) bugs: recursive-mutex deadlock (`CRITICAL_SECTION` is re-entrant, a
-default `pthread_mutex` is not), integer widths (`DWORD`/`HRESULT` on LP64), OpenSSL RNG
-seeding after dropping `CryptGenRandom`, SIGPIPE on socket writes, and the custom global
-`operator new`/`delete` coexisting with Qt. Confirmed findings fold into the Milestone 1
-checkpoint before commit.
+**Still unverified (deferred, not blocking) ⚠️** — the platform-shim review only fully
+confirmed the concurrency findings (recursive mutex, DNS thread) before it was cut short.
+The HTTPS smoke test now exercises OpenSSL RNG seeding live (passes), but these remain
+unaudited: integer widths (`DWORD`/`HRESULT` on LP64), SIGPIPE on socket writes (the test
+never hit a broken-pipe path), and the custom global `operator new`/`delete` coexisting with
+Qt. Revisit when a component stresses them, rather than spending a review pass now.
 
-**Next 🎯 — Milestone 2: "first bytes over the wire."** Prove `wac_network` *runs*, not just
-builds — a CMake test target that drives the JNL classes directly to resolve DNS, open a TCP
-socket, and complete a live HTTP + HTTPS GET. This exercises every runtime unknown above and
-turns the review's findings into a concrete pass/fail gate.
+**Next 🎯 — Milestone 3: `wac_downloadManager` builds and links against `wac_network`.**
+First test that the pattern repeats and that components *compose*. Scoped: ~20 files, one
+`<windows.h>` include (`DownloadCallbackT.h`), no backslash paths. Reuses the OBJECT-library
++ smoke-test shape proven here.
 
 **Decision recorded:** ported files adopt LLVM `clang-format` style wholesale (the
 auto-format hook reformats touched files); blame churn is accepted as part of modernization.
@@ -42,8 +62,8 @@ Milestone ladder:
 | # | Milestone | Proves | State |
 |---|---|---|---|
 | 1 | `wac_network` builds → `.so` | CMake + Nix + shim *compile* | ✅ |
-| 2 | wac_network *runs* (live fetch) | shim is runtime-correct | 🎯 next |
-| 3 | `wac_downloadManager` builds + links wac_network | pattern repeats; components compose | scoped |
+| 2 | wac_network *runs* (live fetch) | shim is runtime-correct | ✅ |
+| 3 | `wac_downloadManager` builds + links wac_network | pattern repeats; components compose | 🎯 next |
 | 4 | `wac_playlists`, then `wac_browser` (Qt6 WebEngine) | the hard Qt5→Qt6 surface | later |
 
 ---
@@ -91,7 +111,7 @@ The Qt components in `/Src/Components/` are already somewhat isolated — start 
 
 - [~] `wac_network`
   - [x] Compiles + links → `libwac_network.so` (Milestone 1)
-  - [ ] Runtime-proven (Milestone 2: live DNS + HTTP/HTTPS GET test harness)
+  - [x] Runtime-proven (Milestone 2: live DNS + HTTP/HTTPS GET smoke test; SNI + RingBuffer fixes)
   - Note: links OpenSSL/Qt6Network; actual Qt `QNetworkAccessManager` usage is minimal —
     the real work is JNL (the bundled Nullsoft socket lib) + the Wasabi BFC dispatch layer
 - [ ] `wac_downloadManager`

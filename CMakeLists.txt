@@ -14,5 +14,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Network)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
+enable_testing()
+
 add_subdirectory(Src/pfc)
 add_subdirectory(Src/Components/wac_network)
